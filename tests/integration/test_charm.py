@@ -1,18 +1,33 @@
 #!/usr/bin/env python3
 # Copyright 2023 Canonical Ltd.
-# See LICENSE file for licensing details.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Test slurmrestd charm against other SLURM charms in the latest/edge channel."""
 
 import asyncio
 import pytest
+import requests
 
 from helpers import (
-    fetch_slurmctld_deps,
-    fetch_slurmd_deps,
+    get_slurmctld_deps,
+    get_slurmd_deps,
 )
 from pytest_operator.plugin import OpsTest
+from tenacity import retry
+from tenacity.stop import stop_after_attempt
+from tenacity.wait import wait_exponential as wexp
 
-ETCD = "etcd-v3.5.0-linux-amd64.tar.gz"
-NHC = "lbnl-nhc-1.4.3.tar.gz"
 SERIES = ["focal"]
 SLURMCTLD = "slurmctld"
 SLURMD = "slurmd"
@@ -25,10 +40,8 @@ SLURMRESTD = "slurmrestd"
 @pytest.mark.skip_if_deployed
 async def test_build_and_deploy(ops_test: OpsTest, series: str, slurmrestd_charm):
     """Deploy minimal working slurmrestd charm."""
-    res_slurmd = fetch_slurmd_deps()
-    res_slurmctld = fetch_slurmctld_deps()
-
-    charm = await slurmrestd_charm
+    res_slurmd = get_slurmd_deps()
+    res_slurmctld = get_slurmctld_deps()
 
     await asyncio.gather(
         # Fetch from charmhub slurmctld
@@ -53,7 +66,7 @@ async def test_build_and_deploy(ops_test: OpsTest, series: str, slurmrestd_charm
             series=series,
         ),
         ops_test.model.deploy(
-            charm,
+            (await slurmrestd_charm),
             application_name=SLURMRESTD,
             num_units=1,
             series=series,
@@ -67,7 +80,7 @@ async def test_build_and_deploy(ops_test: OpsTest, series: str, slurmrestd_charm
     )
     
     # Attach ETCD resource to the slurmctld controller
-    await ops_test.juju("attach-resource", SLURMCTLD, f"etcd={ETCD}")
+    await ops_test.juju("attach-resource", SLURMCTLD, f"etcd={res_slurmctld['etcd']}")
 
     # Add slurmdbd relation to slurmctld
     await ops_test.model.relate(SLURMCTLD, SLURMDBD)
@@ -79,7 +92,7 @@ async def test_build_and_deploy(ops_test: OpsTest, series: str, slurmrestd_charm
     await ops_test.model.relate(SLURMRESTD, SLURMCTLD)
 
     # Attach NHC resource to the slurmd controller
-    await ops_test.juju("attach-resource", SLURMD, f"nhc={NHC}")
+    await ops_test.juju("attach-resource", SLURMD, f"nhc={res_slurmd['etcd']}")
 
     # Add slurmctld relation to slurmd
     await ops_test.model.add_relation(SLURMD, SLURMCTLD)
@@ -88,3 +101,10 @@ async def test_build_and_deploy(ops_test: OpsTest, series: str, slurmrestd_charm
     async with ops_test.fast_forward():
         await ops_test.model.wait_for_idle(apps=[SLURMRESTD], status="active", timeout=1000)
         assert ops_test.model.applications[SLURMRESTD].units[0].workload_status == "active"
+
+
+async def test_slurmrestd_is_active(ops_test: OpsTest):
+    """Test that slurmrestd is active."""
+    unit = ops_test.model.applications[SLURMRESTD].units[0]
+    cmd_res = (await unit.ssh(command="systemctl is-active slurmrestd")).strip("\n")
+    assert cmd_res == "active"
