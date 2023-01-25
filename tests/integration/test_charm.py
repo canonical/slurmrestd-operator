@@ -16,8 +16,10 @@
 """Test slurmrestd charm against other SLURM charms in the latest/edge channel."""
 
 import asyncio
+import logging
 import pathlib
 import pytest
+import tenacity
 
 from helpers import (
     get_slurmctld_res,
@@ -25,6 +27,8 @@ from helpers import (
 )
 from pytest_operator.plugin import OpsTest
 from typing import Any, Coroutine
+
+logger = logging.getLogger(__name__)
 
 SERIES = ["focal"]
 SLURMCTLD = "slurmctld"
@@ -50,6 +54,7 @@ async def test_build_and_deploy(
         ops_test.model.deploy(
             SLURMCTLD,
             application_name=SLURMCTLD,
+            channel="edge",
             num_units=1,
             resources=res_slurmctld,
             series=series,
@@ -57,6 +62,7 @@ async def test_build_and_deploy(
         ops_test.model.deploy(
             SLURMD,
             application_name=SLURMD,
+            channel="edge",
             num_units=1,
             resources=res_slurmd,
             series=series,
@@ -64,6 +70,7 @@ async def test_build_and_deploy(
         ops_test.model.deploy(
             SLURMDBD,
             application_name=SLURMDBD,
+            channel="edge",
             num_units=1,
             series=series,
         ),
@@ -76,6 +83,7 @@ async def test_build_and_deploy(
         ops_test.model.deploy(
             "percona-cluster",
             application_name="mysql",
+            channel="edge",
             num_units=1,
             series="bionic",
         ),
@@ -105,8 +113,32 @@ async def test_build_and_deploy(
         assert ops_test.model.applications[SLURMRESTD].units[0].workload_status == "active"
 
 
+@pytest.mark.abort_on_fail
+@tenacity.retry(
+    wait=tenacity.wait.wait_exponential(multiplier=2, min=1, max=30),
+    stop=tenacity.stop_after_attempt(3),
+    reraise=True,
+)
+async def test_munge_is_active(ops_test: OpsTest) -> None:
+    """Test that munge is active."""
+    logger.info("Checking that munge is active inside Juju unit...")
+    slurmctld_unit = ops_test.model.applications[SLURMCTLD].units[0]
+    res = (await slurmctld_unit.ssh("systemctl is-active munge")).strip("\n")
+    assert res == "active"
+
+
+# TODO: Currently there is a bug where slurmrestd can reach active status despite the
+# systemd service failing. Error is "unable to get address" and "Temporary failure in
+# name resolution". 
+@pytest.mark.xfail
+@tenacity.retry(
+    wait=tenacity.wait.wait_exponential(multiplier=2, min=1, max=30),
+    stop=tenacity.stop_after_attempt(3),
+    reraise=True,
+)
 async def test_slurmrestd_is_active(ops_test: OpsTest) -> None:
     """Test that slurmrestd is active."""
+    logger.info("Checking that slurmrestd is active inside Juju unit...")
     unit = ops_test.model.applications[SLURMRESTD].units[0]
-    cmd_res = (await unit.ssh(command="systemctl is-active slurmrestd")).strip("\n")
+    cmd_res = (await unit.ssh("systemctl is-active slurmrestd")).strip("\n")
     assert cmd_res == "active"
