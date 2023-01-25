@@ -16,17 +16,15 @@
 """Test slurmrestd charm against other SLURM charms in the latest/edge channel."""
 
 import asyncio
+import pathlib
 import pytest
-import requests
 
 from helpers import (
-    get_slurmctld_deps,
-    get_slurmd_deps,
+    get_slurmctld_res,
+    get_slurmd_res,
 )
 from pytest_operator.plugin import OpsTest
-from tenacity import retry
-from tenacity.stop import stop_after_attempt
-from tenacity.wait import wait_exponential as wexp
+from typing import Any, Coroutine
 
 SERIES = ["focal"]
 SLURMCTLD = "slurmctld"
@@ -36,12 +34,16 @@ SLURMRESTD = "slurmrestd"
 
 
 @pytest.mark.abort_on_fail
-@pytest.mark.parametrize("series", SERIES)
 @pytest.mark.skip_if_deployed
-async def test_build_and_deploy(ops_test: OpsTest, series: str, slurmrestd_charm):
+@pytest.mark.parametrize("series", SERIES)
+async def test_build_and_deploy(
+    ops_test: OpsTest, slurmrestd_charm: Coroutine[Any, Any, pathlib.Path], series: str
+    ) -> None:
     """Deploy minimal working slurmrestd charm."""
-    res_slurmd = get_slurmd_deps()
-    res_slurmctld = get_slurmctld_deps()
+    res_slurmd = get_slurmd_res()
+    res_slurmctld = get_slurmctld_res()
+
+    charm = await slurmrestd_charm
 
     await asyncio.gather(
         # Fetch from charmhub slurmctld
@@ -66,7 +68,7 @@ async def test_build_and_deploy(ops_test: OpsTest, series: str, slurmrestd_charm
             series=series,
         ),
         ops_test.model.deploy(
-            (await slurmrestd_charm),
+            charm,
             application_name=SLURMRESTD,
             num_units=1,
             series=series,
@@ -92,7 +94,7 @@ async def test_build_and_deploy(ops_test: OpsTest, series: str, slurmrestd_charm
     await ops_test.model.relate(SLURMRESTD, SLURMCTLD)
 
     # Attach NHC resource to the slurmd controller
-    await ops_test.juju("attach-resource", SLURMD, f"nhc={res_slurmd['etcd']}")
+    await ops_test.juju("attach-resource", SLURMD, f"nhc={res_slurmd['nhc']}")
 
     # Add slurmctld relation to slurmd
     await ops_test.model.add_relation(SLURMD, SLURMCTLD)
@@ -103,7 +105,7 @@ async def test_build_and_deploy(ops_test: OpsTest, series: str, slurmrestd_charm
         assert ops_test.model.applications[SLURMRESTD].units[0].workload_status == "active"
 
 
-async def test_slurmrestd_is_active(ops_test: OpsTest):
+async def test_slurmrestd_is_active(ops_test: OpsTest) -> None:
     """Test that slurmrestd is active."""
     unit = ops_test.model.applications[SLURMRESTD].units[0]
     cmd_res = (await unit.ssh(command="systemctl is-active slurmrestd")).strip("\n")
