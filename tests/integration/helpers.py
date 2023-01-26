@@ -45,6 +45,7 @@ def get_slurmctld_res() -> Dict[str, pathlib.Path]:
 
     return {"etcd": etcd}
 
+
 def get_slurmd_res() -> Dict[str, pathlib.Path]:
     """Get slurmd resources needed for charm deployment."""
     if not (nhc := pathlib.Path(NHC)).exists():
