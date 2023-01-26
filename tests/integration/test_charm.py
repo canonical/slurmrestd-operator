@@ -125,7 +125,7 @@ async def test_munge_is_active(ops_test: OpsTest) -> None:
     assert res == "active"
 
 
-# TODO: Currently there is a bug where slurmrestd can reach active status despite the
+# IMPORTANT: Currently there is a bug where slurmrestd can reach active status despite the
 # systemd service failing. Error is "unable to get address" and "Temporary failure in
 # name resolution". 
 @pytest.mark.xfail
