@@ -29,6 +29,7 @@ async def slurmrestd_charm(ops_test: OpsTest):
     charm = await ops_test.build_charm(".")
     return charm
 
+
 def pytest_sessionfinish(session, exitstatus) -> None:
     """Clean up repository after test session has completed."""
     pathlib.Path(ETCD).unlink(missing_ok=True)
