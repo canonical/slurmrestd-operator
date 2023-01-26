@@ -42,7 +42,7 @@ SLURMRESTD = "slurmrestd"
 @pytest.mark.parametrize("series", SERIES)
 async def test_build_and_deploy(
     ops_test: OpsTest, slurmrestd_charm: Coroutine[Any, Any, pathlib.Path], series: str
-    ) -> None:
+) -> None:
     """Deploy minimal working slurmrestd charm."""
     res_slurmd = get_slurmd_res()
     res_slurmctld = get_slurmctld_res()
