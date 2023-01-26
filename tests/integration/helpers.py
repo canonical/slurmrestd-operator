@@ -34,6 +34,7 @@ VERSION_NUM = subprocess.run(
     shlex.split("git describe --always"), stdout=subprocess.PIPE, text=True
 ).stdout.strip("\n")
 
+
 def get_slurmctld_res() -> Dict[str, pathlib.Path]:
     """Get slurmctld resources needed for charm deployment."""
     if not (version := pathlib.Path(VERSION)).exists():
