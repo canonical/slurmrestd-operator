@@ -47,8 +47,6 @@ async def test_build_and_deploy(
     res_slurmd = get_slurmd_res()
     res_slurmctld = get_slurmctld_res()
 
-    charm = await slurmrestd_charm
-
     await asyncio.gather(
         # Fetch from charmhub slurmctld
         ops_test.model.deploy(
@@ -75,7 +73,7 @@ async def test_build_and_deploy(
             series=series,
         ),
         ops_test.model.deploy(
-            charm,
+            str(await slurmrestd_charm),
             application_name=SLURMRESTD,
             num_units=1,
             series=series,
